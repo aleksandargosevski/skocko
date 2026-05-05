@@ -1,0 +1,52 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: skocko
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X skocko/cmd.version={{.Version}}
+
+archives:
+  - format: tar.gz
+    name_template: "skocko_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^style:"
+      - "^chore:"
+      - "^test:"
+
+brews:
+  - repository:
+      owner: aleksandargosevski
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/aleksandargosevski/skocko"
+    description: "Smart tmux session manager with a built-in TUI picker"
+    license: MIT
+    install: |
+      bin.install "skocko"
+    test: |
+      system bin/"skocko", "--help"
+
+release:
+  draft: false
+  prerelease: auto

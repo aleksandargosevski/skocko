@@ -1,0 +1,60 @@
+# Directories to scan for projects
+project_paths:
+  - ~/Sites
+
+# Theme: catppuccin-mocha, catppuccin-latte, catppuccin-frappe, catppuccin-macchiato, default
+# theme: catppuccin-mocha
+
+# UI
+# show_border: false
+# show_hotkeys: false
+
+# Reusable window definitions (referenced by name from sessions and project_defaults)
+# windows:
+#   - name: editor
+#     command: nvim
+#   - name: server
+#     command: npm run dev
+#   - name: git
+#     command: lazygit
+
+# Custom sessions (shown in "Configured" section)
+# sessions:
+#   - name: dotfiles
+#     path: ~/dotfiles
+#     windows: [editor, git]
+#   - name: notes
+#     path: ~/Documents/notes
+#     windows: [editor]
+
+# Default windows for scanned projects (on first session creation only)
+# Exact paths take priority over globs.
+# project_defaults:
+#   - path: ~/Sites/my-app
+#     windows: [editor, server, git]
+#   - path: "~/Sites/*"
+#     windows: [editor]
+
+# Git status indicators
+# git_status:
+#   show_on_start: false
+#   scope: all             # "all" or "active"
+#   detail: full           # "dirty", "ahead_behind", or "full"
+
+# Keybindings
+# keybindings:
+#   zoxide: ctrl+s
+#   kill_session: ctrl+x
+#   git_status: ctrl+g
+#   preview: ctrl+o
+#   save_session: ctrl+w
+#   copy_path: ctrl+y
+#   delete_saved: alt+d
+#   refresh: ctrl+r
+#   toggle_help: ctrl+_
+
+# AI status detection (used by skocko watch and picker)
+# ai_status:
+#   poll_interval: 3
+#   notify_on_complete: true
+

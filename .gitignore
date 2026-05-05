@@ -1,0 +1,6 @@
+# Build output
+bin/
+dist/
+
+# OS
+.DS_Store
