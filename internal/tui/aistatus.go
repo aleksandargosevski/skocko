@@ -64,7 +64,7 @@ func DetectAllAIStatuses() map[string]AIStatus {
 // No tmux interaction at all - safe to run from daemons that might conflict with popups.
 // Returns a map keyed by PID string instead of tmux pane coordinates.
 func DetectAllAIStatusesNonTmux() map[string]AIStatus {
-	out, err := exec.Command("ps", "-eo", "pid,pcpu,comm").Output()
+	out, err := exec.Command("ps", "-eo", "pid,pcpu,comm,args").Output()
 	if err != nil {
 		return nil
 	}
@@ -72,7 +72,7 @@ func DetectAllAIStatusesNonTmux() map[string]AIStatus {
 	statuses := make(map[string]AIStatus)
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 3 {
+		if len(fields) < 4 {
 			continue
 		}
 		pid := fields[0]
@@ -81,10 +81,7 @@ func DetectAllAIStatusesNonTmux() map[string]AIStatus {
 			continue
 		}
 
-		cmd := strings.ToLower(fields[2])
-		if idx := strings.LastIndex(cmd, "/"); idx >= 0 {
-			cmd = cmd[idx+1:]
-		}
+		cmd := tmux.CanonicalCommandName(fields[2], strings.Join(fields[3:], " "))
 		if !IsAIProcess(cmd) {
 			continue
 		}
@@ -139,38 +136,63 @@ func getTmuxAIPanes() []aiPaneInfo {
 	return panes
 }
 
-// getAIProcessCPU returns max child CPU% by parent PID for AI processes.
+// getAIProcessCPU returns max AI CPU% by process PID and ancestor PID.
 func getAIProcessCPU() map[int]float64 {
-	out, err := exec.Command("ps", "-eo", "ppid,pcpu,comm").Output()
+	out, err := exec.Command("ps", "-eo", "pid,ppid,pcpu,comm,args").Output()
 	if err != nil {
 		return nil
 	}
 
-	result := make(map[int]float64)
+	type processCPU struct {
+		pid     int
+		ppid    int
+		cpu     float64
+		command string
+		args    string
+	}
+
+	var processes []processCPU
+	parentByPID := make(map[int]int)
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 3 {
+		if len(fields) < 5 {
 			continue
 		}
-		ppid, err := strconv.Atoi(fields[0])
+		pid, err := strconv.Atoi(fields[0])
 		if err != nil {
 			continue
 		}
-		cpu, err := strconv.ParseFloat(fields[1], 64)
+		ppid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+		cpu, err := strconv.ParseFloat(fields[2], 64)
 		if err != nil {
 			continue
 		}
 
-		cmd := strings.ToLower(fields[2])
-		if idx := strings.LastIndex(cmd, "/"); idx >= 0 {
-			cmd = cmd[idx+1:]
-		}
+		processes = append(processes, processCPU{
+			pid:     pid,
+			ppid:    ppid,
+			cpu:     cpu,
+			command: fields[3],
+			args:    strings.Join(fields[4:], " "),
+		})
+		parentByPID[pid] = ppid
+	}
+
+	result := make(map[int]float64)
+	for _, process := range processes {
+		cmd := tmux.CanonicalCommandName(process.command, process.args)
 		if !IsAIProcess(cmd) {
 			continue
 		}
 
-		if cpu > result[ppid] {
-			result[ppid] = cpu
+		for current, seen := process.pid, map[int]bool{}; current > 0 && !seen[current]; current = parentByPID[current] {
+			seen[current] = true
+			if process.cpu > result[current] {
+				result[current] = process.cpu
+			}
 		}
 	}
 	return result

@@ -162,34 +162,129 @@ func listPanePIDs(sessionName string) []int {
 	return pids
 }
 
-// nodeChildAliases maps child process comm names to their canonical command names.
-// When tmux reports "node" as pane_current_command, we check if the shell's child
-// process is actually a known tool (e.g. pi runs as a shell script that execs node,
-// but the process comm stays as "pi").
-var nodeChildAliases = map[string]string{
-	"pi": "pi",
+var nodeScriptAliases = map[string]string{
+	"aider":    "aider",
+	"claude":   "claude",
+	"opencode": "opencode",
+	"pi":       "pi",
 }
 
-// ResolveCommand checks if a generic "node" process is actually a known tool
-// by inspecting the child processes of the pane shell via ps.
+// ResolveCommand checks if a generic node process is actually a known tool.
 func ResolveCommand(command string, panePID int) string {
-	if panePID <= 0 || command != "node" {
+	if panePID <= 0 || baseCommandName(command) != "node" {
 		return command
 	}
-	out, err := exec.Command("ps", "-eo", "ppid,comm").Output()
+	processes, err := listProcesses()
 	if err != nil {
 		return command
 	}
-	pidStr := strconv.Itoa(panePID)
+	if alias := resolveNodeAliasForPID(processes, panePID); alias != "" {
+		return alias
+	}
+	return command
+}
+
+// CanonicalCommandName returns a known tool name when a process command is a generic runtime.
+func CanonicalCommandName(command, args string) string {
+	cmd := baseCommandName(command)
+	if cmd != "node" {
+		return cmd
+	}
+	if alias := resolveNodeAlias(command, args); alias != "" {
+		return alias
+	}
+	return cmd
+}
+
+type processInfo struct {
+	PID     int
+	PPID    int
+	Command string
+	Args    string
+}
+
+func listProcesses() ([]processInfo, error) {
+	out, err := exec.Command("ps", "-eo", "pid,ppid,comm,args").Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var processes []processInfo
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 2 || fields[0] != pidStr {
+		if len(fields) < 4 {
 			continue
 		}
-		child := strings.ToLower(fields[1])
-		if alias, ok := nodeChildAliases[child]; ok {
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			continue
+		}
+		ppid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+		processes = append(processes, processInfo{
+			PID:     pid,
+			PPID:    ppid,
+			Command: fields[2],
+			Args:    strings.Join(fields[3:], " "),
+		})
+	}
+	return processes, nil
+}
+
+func resolveNodeAliasForPID(processes []processInfo, panePID int) string {
+	childrenByParent := make(map[int][]processInfo)
+	for _, process := range processes {
+		if process.PID == panePID {
+			if alias := resolveNodeAlias(process.Command, process.Args); alias != "" {
+				return alias
+			}
+		}
+		childrenByParent[process.PPID] = append(childrenByParent[process.PPID], process)
+	}
+
+	queue := append([]processInfo(nil), childrenByParent[panePID]...)
+	for len(queue) > 0 {
+		process := queue[0]
+		queue = queue[1:]
+		if alias := resolveNodeAlias(process.Command, process.Args); alias != "" {
 			return alias
 		}
+		queue = append(queue, childrenByParent[process.PID]...)
+	}
+	return ""
+}
+
+func resolveNodeAlias(command, args string) string {
+	if alias, ok := nodeScriptAliases[baseCommandName(command)]; ok {
+		return alias
+	}
+	return nodeScriptAliases[nodeScriptName(args)]
+}
+
+func nodeScriptName(args string) string {
+	fields := strings.Fields(args)
+	if len(fields) == 0 {
+		return ""
+	}
+	if alias, ok := nodeScriptAliases[baseCommandName(fields[0])]; ok {
+		return alias
+	}
+	for _, field := range fields[1:] {
+		field = strings.Trim(field, "'\"")
+		if field == "" || strings.HasPrefix(field, "-") {
+			continue
+		}
+		return baseCommandName(field)
+	}
+	return ""
+}
+
+func baseCommandName(command string) string {
+	command = strings.Trim(strings.ToLower(command), "'\"")
+	if idx := strings.LastIndex(command, "/"); idx >= 0 {
+		command = command[idx+1:]
 	}
 	return command
 }
