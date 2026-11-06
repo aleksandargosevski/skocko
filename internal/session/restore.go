@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
+
+	"skocko/internal/tmux"
 )
 
 // RestoreSession recreates a tmux session from a saved snapshot.
@@ -40,7 +42,7 @@ func RestoreSession(snapshot *SessionSnapshot) error {
 		}
 
 		if err := exec.Command("tmux", "new-window",
-			"-t", snapshot.Name,
+			"-t", tmux.WindowTarget(snapshot.Name, ""),
 			"-n", win.Name,
 			"-c", winPath,
 		).Run(); err != nil {
@@ -53,7 +55,7 @@ func RestoreSession(snapshot *SessionSnapshot) error {
 	// Apply layouts after all panes are created
 	for _, win := range snapshot.Windows {
 		if win.Layout != "" {
-			target := fmt.Sprintf("%s:%s", snapshot.Name, win.Name)
+			target := tmux.WindowTarget(snapshot.Name, win.Name)
 			_ = exec.Command("tmux", "select-layout", "-t", target, win.Layout).Run()
 		}
 	}
@@ -61,7 +63,7 @@ func RestoreSession(snapshot *SessionSnapshot) error {
 	// Select the originally active window
 	for _, win := range snapshot.Windows {
 		if win.Active {
-			target := fmt.Sprintf("%s:%s", snapshot.Name, win.Name)
+			target := tmux.WindowTarget(snapshot.Name, win.Name)
 			_ = exec.Command("tmux", "select-window", "-t", target).Run()
 			break
 		}
@@ -80,7 +82,7 @@ func restoreWindowPanes(sessionName string, win WindowSnapshot) {
 	// Run its restore command.
 	firstPane := win.Panes[0]
 	if firstPane.RestoreCommand != "" {
-		target := fmt.Sprintf("%s:%s", sessionName, win.Name)
+		target := tmux.WindowTarget(sessionName, win.Name)
 		// Small delay to let the shell initialize
 		time.Sleep(50 * time.Millisecond)
 		_ = exec.Command("tmux", "send-keys", "-t", target, firstPane.RestoreCommand, "Enter").Run()
@@ -93,7 +95,7 @@ func restoreWindowPanes(sessionName string, win WindowSnapshot) {
 			panePath = win.Path
 		}
 
-		target := fmt.Sprintf("%s:%s", sessionName, win.Name)
+		target := tmux.WindowTarget(sessionName, win.Name)
 		if err := exec.Command("tmux", "split-window", "-t", target, "-c", panePath).Run(); err != nil {
 			continue
 		}

@@ -46,11 +46,20 @@ func DetectAllAIStatuses() map[string]AIStatus {
 	// Step 2: Get CPU of all AI processes via ps only
 	cpuMap := getAIProcessCPU()
 
-	// Step 3: Match panes to CPU usage
+	var opencodeDirs map[string]bool
+	opencodeAPIAvailable := false
+	if hasOpencodePane(panes) {
+		opencodeDirs, opencodeAPIAvailable = opencodeWorkingDirectories()
+	}
+
+	// Step 3: Match panes to opencode service state, or CPU usage for other tools
 	statuses := make(map[string]AIStatus, len(panes))
 	for _, p := range panes {
-		cpu := cpuMap[p.shellPID]
-		if cpu > cpuThreshold {
+		working := cpuMap[p.shellPID] > cpuThreshold
+		if p.command == "opencode" && opencodeAPIAvailable {
+			working = opencodeDirs[normalizePath(p.path)]
+		}
+		if working {
 			statuses[p.key] = AIWorking
 		} else {
 			statuses[p.key] = AIIdle
@@ -58,6 +67,15 @@ func DetectAllAIStatuses() map[string]AIStatus {
 	}
 
 	return statuses
+}
+
+func hasOpencodePane(panes []aiPaneInfo) bool {
+	for _, p := range panes {
+		if p.command == "opencode" {
+			return true
+		}
+	}
+	return false
 }
 
 // DetectAllAIStatusesNonTmux detects AI statuses using ONLY ps commands.
@@ -70,6 +88,7 @@ func DetectAllAIStatusesNonTmux() map[string]AIStatus {
 	}
 
 	statuses := make(map[string]AIStatus)
+	var opencodePIDs []string
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 4 {
@@ -85,11 +104,26 @@ func DetectAllAIStatusesNonTmux() map[string]AIStatus {
 		if !IsAIProcess(cmd) {
 			continue
 		}
+		if cmd == "opencode" {
+			opencodePIDs = append(opencodePIDs, pid)
+		}
 
 		if cpu > cpuThreshold {
 			statuses[pid] = AIWorking
 		} else {
 			statuses[pid] = AIIdle
+		}
+	}
+
+	// opencode v2 work happens in a shared service, so track its sessions instead of process CPU
+	if len(opencodePIDs) > 0 {
+		if sessionIDs, ok := opencodeRunningSessions(); ok {
+			for _, pid := range opencodePIDs {
+				delete(statuses, pid)
+			}
+			for _, id := range sessionIDs {
+				statuses["opencode:"+id] = AIWorking
+			}
 		}
 	}
 
@@ -104,11 +138,13 @@ func DetectAllAIStatusesNonTmux() map[string]AIStatus {
 type aiPaneInfo struct {
 	key      string // "session:window.pane"
 	shellPID int
+	command  string
+	path     string
 }
 
 func getTmuxAIPanes() []aiPaneInfo {
 	out, err := exec.Command("tmux", "list-panes", "-a",
-		"-F", "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_current_command}\t#{pane_pid}").Output()
+		"-F", "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_current_command}\t#{pane_pid}\t#{pane_current_path}").Output()
 	if err != nil {
 		return nil
 	}
@@ -118,8 +154,8 @@ func getTmuxAIPanes() []aiPaneInfo {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 5)
-		if len(parts) < 5 {
+		parts := strings.SplitN(line, "\t", 6)
+		if len(parts) < 6 {
 			continue
 		}
 		pid, err := strconv.Atoi(parts[4])
@@ -131,7 +167,7 @@ func getTmuxAIPanes() []aiPaneInfo {
 			continue
 		}
 		key := parts[0] + ":" + parts[1] + "." + parts[2]
-		panes = append(panes, aiPaneInfo{key: key, shellPID: pid})
+		panes = append(panes, aiPaneInfo{key: key, shellPID: pid, command: strings.ToLower(cmd), path: parts[5]})
 	}
 	return panes
 }

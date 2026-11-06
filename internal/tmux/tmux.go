@@ -90,9 +90,22 @@ func ListSessions() []Session {
 	return sessions
 }
 
+// SessionTarget returns a target that matches the session name exactly.
+// Without the "=" prefix tmux falls back to prefix matching, so "app" would
+// resolve to an existing "app-core" session.
+func SessionTarget(name string) string {
+	return "=" + name
+}
+
+// WindowTarget returns a target for a window inside an exactly matched session.
+// An empty window targets the session's current window.
+func WindowTarget(session, window string) string {
+	return SessionTarget(session) + ":" + window
+}
+
 // SessionExists checks if a tmux session with the given name exists.
 func SessionExists(name string) bool {
-	err := exec.Command("tmux", "has-session", "-t", name).Run()
+	err := exec.Command("tmux", "has-session", "-t", SessionTarget(name)).Run()
 	return err == nil
 }
 
@@ -103,12 +116,12 @@ func CreateSession(name, path string) error {
 
 // SwitchTo switches the current tmux client to the given session.
 func SwitchTo(name string) error {
-	return exec.Command("tmux", "switch-client", "-t", name).Run()
+	return exec.Command("tmux", "switch-client", "-t", SessionTarget(name)).Run()
 }
 
 // Attach attaches to an existing tmux session.
 func Attach(name string) error {
-	cmd := exec.Command("tmux", "attach-session", "-t", name)
+	cmd := exec.Command("tmux", "attach-session", "-t", SessionTarget(name))
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -138,12 +151,12 @@ func KillSession(name string) error {
 	}
 
 	// Now kill the tmux session (cleans up any remaining processes)
-	return exec.Command("tmux", "kill-session", "-t", name).Run()
+	return exec.Command("tmux", "kill-session", "-t", SessionTarget(name)).Run()
 }
 
 // listPanePIDs returns all pane PIDs for a session.
 func listPanePIDs(sessionName string) []int {
-	out, err := exec.Command("tmux", "list-panes", "-s", "-t", sessionName, "-F", "#{pane_pid}").Output()
+	out, err := exec.Command("tmux", "list-panes", "-s", "-t", SessionTarget(sessionName), "-F", "#{pane_pid}").Output()
 	if err != nil {
 		return nil
 	}
@@ -310,21 +323,21 @@ func CreateSessionWithWindows(name, path string, windows []WindowDef) error {
 
 	// Run command in first window
 	if windows[0].Command != "" {
-		_ = exec.Command("tmux", "send-keys", "-t", name+":"+windows[0].Name, windows[0].Command, "Enter").Run()
+		_ = exec.Command("tmux", "send-keys", "-t", WindowTarget(name, windows[0].Name), windows[0].Command, "Enter").Run()
 	}
 
 	// Create additional windows
 	for _, w := range windows[1:] {
-		if err := exec.Command("tmux", "new-window", "-t", name, "-n", w.Name, "-c", path).Run(); err != nil {
+		if err := exec.Command("tmux", "new-window", "-t", WindowTarget(name, ""), "-n", w.Name, "-c", path).Run(); err != nil {
 			continue
 		}
 		if w.Command != "" {
-			_ = exec.Command("tmux", "send-keys", "-t", name+":"+w.Name, w.Command, "Enter").Run()
+			_ = exec.Command("tmux", "send-keys", "-t", WindowTarget(name, w.Name), w.Command, "Enter").Run()
 		}
 	}
 
 	// Select the first window
-	_ = exec.Command("tmux", "select-window", "-t", name+":"+windows[0].Name).Run()
+	_ = exec.Command("tmux", "select-window", "-t", WindowTarget(name, windows[0].Name)).Run()
 
 	return nil
 }

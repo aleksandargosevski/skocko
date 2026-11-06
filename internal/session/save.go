@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"skocko/internal/tmux"
 )
 
 // SaveSession snapshots an active tmux session and writes it to disk.
@@ -50,7 +52,7 @@ func SaveSession(sessionName string) (*SessionSnapshot, error) {
 // SnapshotSession captures the current state of a tmux session.
 func SnapshotSession(sessionName string) (*SessionSnapshot, error) {
 	// Get session path
-	out, err := exec.Command("tmux", "display-message", "-t", sessionName,
+	out, err := exec.Command("tmux", "display-message", "-t", tmux.SessionTarget(sessionName),
 		"-p", "#{session_path}").Output()
 	if err != nil {
 		return nil, fmt.Errorf("session %q not found: %w", sessionName, err)
@@ -58,7 +60,7 @@ func SnapshotSession(sessionName string) (*SessionSnapshot, error) {
 	sessionPath := strings.TrimSpace(string(out))
 
 	// Get windows
-	winOut, err := exec.Command("tmux", "list-windows", "-t", sessionName,
+	winOut, err := exec.Command("tmux", "list-windows", "-t", tmux.SessionTarget(sessionName),
 		"-F", "#{window_index}\t#{window_name}\t#{window_layout}\t#{window_active}\t#{pane_current_path}").Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list windows: %w", err)
@@ -100,7 +102,7 @@ func SnapshotSession(sessionName string) (*SessionSnapshot, error) {
 
 // snapshotPanes captures all panes in a window.
 func snapshotPanes(sessionName string, windowIndex int) []PaneSnapshot {
-	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
+	target := tmux.WindowTarget(sessionName, strconv.Itoa(windowIndex))
 	out, err := exec.Command("tmux", "list-panes", "-t", target,
 		"-F", "#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_pid}").Output()
 	if err != nil {
@@ -138,7 +140,7 @@ func snapshotPanes(sessionName string, windowIndex int) []PaneSnapshot {
 
 // getPanePID returns the PID of a specific pane.
 func getPanePID(sessionName string, windowIndex, paneIndex int) int {
-	target := fmt.Sprintf("%s:%d.%d", sessionName, windowIndex, paneIndex)
+	target := tmux.WindowTarget(sessionName, fmt.Sprintf("%d.%d", windowIndex, paneIndex))
 	out, err := exec.Command("tmux", "display-message", "-t", target, "-p", "#{pane_pid}").Output()
 	if err != nil {
 		return 0

@@ -85,3 +85,15 @@ func TestResolveNodeAliasForPID(t *testing.T) {
 		})
 	}
 }
+
+func TestTargetsMatchSessionNameExactly(t *testing.T) {
+	if got := SessionTarget("kreditcentar"); got != "=kreditcentar" {
+		t.Errorf("SessionTarget() = %q, want %q", got, "=kreditcentar")
+	}
+	if got := WindowTarget("kreditcentar", "editor"); got != "=kreditcentar:editor" {
+		t.Errorf("WindowTarget() = %q, want %q", got, "=kreditcentar:editor")
+	}
+	if got := WindowTarget("kreditcentar", ""); got != "=kreditcentar:" {
+		t.Errorf("WindowTarget() with empty window = %q, want %q", got, "=kreditcentar:")
+	}
+}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"skocko/internal/config"
+	"skocko/internal/tmux"
 )
 
 // PreviewData holds all the info displayed in the preview panel.
@@ -188,7 +189,7 @@ func gitRemote(path string) string {
 
 func fetchTmuxWindows(sessionName string) []PreviewWindow {
 	// Get window list
-	out, err := exec.Command("tmux", "list-windows", "-t", sessionName,
+	out, err := exec.Command("tmux", "list-windows", "-t", tmux.SessionTarget(sessionName),
 		"-F", "#{window_index}\t#{window_name}\t#{window_active}").Output()
 	if err != nil {
 		return nil
@@ -211,7 +212,7 @@ func fetchTmuxWindows(sessionName string) []PreviewWindow {
 
 		// Get panes for this window
 		paneOut, err := exec.Command("tmux", "list-panes",
-			"-t", sessionName+":"+parts[0],
+			"-t", tmux.WindowTarget(sessionName, parts[0]),
 			"-F", "#{pane_current_command}\t#{pane_current_path}").Output()
 		if err == nil {
 			for _, paneLine := range strings.Split(strings.TrimSpace(string(paneOut)), "\n") {
