@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"skocko/internal/git"
+	"skocko/internal/servers"
 	"skocko/internal/tmux"
 )
 
@@ -23,6 +24,7 @@ const (
 	gitIcon   = "󰊢" // Nerd Font git icon
 	noIcon    = " "  // blank space to keep alignment
 	savedIcon = "󰆓" // floppy disk / save icon
+	nodeIcon  = "󰎙"
 )
 
 // ViewMode represents which list the TUI is currently showing.
@@ -46,9 +48,9 @@ var processIcons = []struct {
 	Icon      string
 	ColorRole string
 }{
-	{Names: []string{"node", "npm", "npx", "bun", "deno"}, Icon: "󰎙", ColorRole: "green"},
+	{Names: []string{"node", "npm", "npx", "bun", "deno"}, Icon: nodeIcon, ColorRole: "green"},
 	{Names: []string{"nvim"}, Icon: "", ColorRole: "green"},
-	{Names: []string{"opencode", "claude", "aider", "pi", "cursor", "copilot"}, Icon: "󰚩", ColorRole: "lavender"},
+	{Names: []string{"opencode", "claude", "aider", "pi", "codex", "gemini", "cursor", "copilot"}, Icon: "󰚩", ColorRole: "lavender"},
 	{Names: []string{"lazygit"}, Icon: "󰊢", ColorRole: "peach"},
 	{Names: []string{"docker", "docker-compose"}, Icon: "󰡨", ColorRole: "blue"},
 	{Names: []string{"python", "python3", "pip"}, Icon: "󰌠", ColorRole: "yellow"},
@@ -163,4 +165,6 @@ type Item struct {
 	GitStatus       *git.Status   // nil if git status not available/loaded
 	WindowNames     []string      // window names to create on session start (references config)
 	HasSavedState   bool          // true if there's a saved snapshot on disk
+	PanePIDs        []int            // tmux pane PIDs (active sessions only)
+	Servers         []servers.Server // detected node/bun/deno processes
 }

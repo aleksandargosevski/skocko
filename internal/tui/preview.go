@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"skocko/internal/config"
+	"skocko/internal/servers"
 	"skocko/internal/tmux"
 )
 
@@ -25,6 +26,9 @@ type PreviewData struct {
 
 	// Configured windows (for non-active items with window config)
 	ConfiguredWindows []config.WindowConfig
+
+	// Detected node/bun/deno processes
+	Servers []servers.Server
 
 	IsActive bool
 }
@@ -50,6 +54,7 @@ func FetchPreviewData(item Item, cfg *config.Config) PreviewData {
 		Name:     item.Name,
 		Path:     item.Path,
 		IsActive: item.IsActive,
+		Servers:  item.Servers,
 	}
 
 	// Git info
@@ -137,6 +142,11 @@ func RenderPreview(data PreviewData, width, height int, t *Theme) string {
 		}
 	}
 
+	if len(data.Servers) > 0 {
+		lines = append(lines, sectionStyle.Render("Servers"))
+		lines = append(lines, renderServerLines(data.Servers, width, t)...)
+	}
+
 	// Configured windows for non-active items
 	if !data.IsActive && len(data.ConfiguredWindows) > 0 {
 		lines = append(lines, sectionStyle.Render("Windows (on create)"))
@@ -157,6 +167,57 @@ func RenderPreview(data PreviewData, width, height int, t *Theme) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// renderServerLines renders one line per server: ports, command, pid and a
+// "detached" marker for processes no longer running under a tmux pane.
+func renderServerLines(list []servers.Server, width int, t *Theme) []string {
+	portStyle := lipgloss.NewStyle().Foreground(t.Green)
+	commandStyle := lipgloss.NewStyle().Foreground(t.Text)
+	dimStyle := lipgloss.NewStyle().Foreground(t.Dim)
+	detachedStyle := lipgloss.NewStyle().Foreground(t.Peach)
+
+	lines := make([]string, 0, len(list))
+	for _, s := range list {
+		ports := make([]string, len(s.Ports))
+		for i, port := range s.Ports {
+			ports[i] = fmt.Sprintf(":%d", port)
+		}
+		portsText := strings.Join(ports, " ")
+		if portsText == "" {
+			portsText = "-"
+		}
+
+		suffix := fmt.Sprintf("pid %d", s.PID)
+		if s.Detached {
+			suffix += " detached"
+		}
+
+		command := servers.DisplayCommand(s.Args)
+		maxCommand := width - lipgloss.Width(portsText) - lipgloss.Width(suffix) - 8
+		command = truncateRunes(command, maxCommand)
+
+		suffixText := dimStyle.Render(fmt.Sprintf("pid %d", s.PID))
+		if s.Detached {
+			suffixText += " " + detachedStyle.Render("detached")
+		}
+		lines = append(lines, "  "+portStyle.Render(portsText)+"  "+commandStyle.Render(command)+"  "+suffixText)
+	}
+	return lines
+}
+
+func truncateRunes(s string, max int) string {
+	runes := []rune(s)
+	if max <= 0 {
+		return ""
+	}
+	if len(runes) <= max {
+		return s
+	}
+	if max <= 3 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-3]) + "..."
 }
 
 // --- git helpers (single-item, fast) ---

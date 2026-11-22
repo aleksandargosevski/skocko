@@ -11,6 +11,7 @@ import (
 type Keybindings struct {
 	Zoxide      string `mapstructure:"zoxide"`
 	KillSession string `mapstructure:"kill_session"`
+	KillServers string `mapstructure:"kill_servers"`
 	GitStatus   string `mapstructure:"git_status"`
 	Preview     string `mapstructure:"preview"`
 	SaveSession string `mapstructure:"save_session"`
@@ -45,6 +46,11 @@ type ProjectDefault struct {
 	Windows []string `mapstructure:"windows"` // references WindowConfig.Name
 }
 
+// ServersConfig controls node/bun/deno process detection.
+type ServersConfig struct {
+	Ignore []string `mapstructure:"ignore"` // extra command substrings to hide, added to built-in defaults
+}
+
 type AIStatusConfig struct {
 	Enabled          bool `mapstructure:"enabled"`
 	PollInterval     int  `mapstructure:"poll_interval"`      // seconds between checks
@@ -59,6 +65,7 @@ type Config struct {
 	Keybindings     Keybindings      `mapstructure:"keybindings"`
 	GitStatus       GitStatusConfig  `mapstructure:"git_status"`
 	AIStatus        AIStatusConfig   `mapstructure:"ai_status"`
+	Servers         ServersConfig    `mapstructure:"servers"`
 	Windows         []WindowConfig   `mapstructure:"windows"`
 	Sessions        []SessionConfig  `mapstructure:"sessions"`
 	ProjectDefaults []ProjectDefault `mapstructure:"project_defaults"`
@@ -143,6 +150,7 @@ func Load(cfgFile string) (*Config, error) {
 	viper.SetDefault("show_hotkeys", false)
 	viper.SetDefault("keybindings.zoxide", "ctrl+s")
 	viper.SetDefault("keybindings.kill_session", "ctrl+x")
+	viper.SetDefault("keybindings.kill_servers", "ctrl+k")
 	viper.SetDefault("keybindings.git_status", "ctrl+g")
 	viper.SetDefault("keybindings.preview", "ctrl+o")
 	viper.SetDefault("keybindings.save_session", "ctrl+w")
@@ -192,6 +200,7 @@ func defaultConfig() *Config {
 		Keybindings: Keybindings{
 			Zoxide:      "ctrl+s",
 			KillSession: "ctrl+x",
+			KillServers: "ctrl+k",
 			GitStatus:   "ctrl+g",
 			Preview:     "ctrl+o",
 			SaveSession: "ctrl+w",
@@ -219,6 +228,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Keybindings.KillSession == "" {
 		cfg.Keybindings.KillSession = "ctrl+x"
+	}
+	if cfg.Keybindings.KillServers == "" {
+		cfg.Keybindings.KillServers = "ctrl+k"
 	}
 	if cfg.Keybindings.GitStatus == "" {
 		cfg.Keybindings.GitStatus = "ctrl+g"

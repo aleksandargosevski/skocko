@@ -64,6 +64,7 @@ func BuildItems(projects []project.Project, sessions []tmux.Session, cfg *config
 				Section:         SectionActiveSessions,
 				OriginalSection: SectionConfigured,
 				ProcessIcons:    DetectProcessIcons(s.Processes, sc.Name),
+				PanePIDs:        panePIDs(s),
 				SortTime:        s.Activity,
 				WindowNames:     windowNames,
 			})
@@ -118,6 +119,7 @@ func BuildItems(projects []project.Project, sessions []tmux.Session, cfg *config
 				Section:         SectionActiveSessions,
 				OriginalSection: SectionProjects,
 				ProcessIcons:    DetectProcessIcons(s.Processes, p.Name),
+				PanePIDs:        panePIDs(s),
 				SortTime:        s.Activity,
 				WindowNames:     windowNames,
 			})
@@ -149,6 +151,7 @@ func BuildItems(projects []project.Project, sessions []tmux.Session, cfg *config
 				IsActive:     true,
 				Section:      SectionActiveSessions,
 				ProcessIcons: DetectProcessIcons(s.Processes, s.Name),
+				PanePIDs:     panePIDs(s),
 				SortTime:     s.Activity,
 			})
 		}
@@ -184,6 +187,16 @@ func BuildZoxideItems(entries []zoxide.Entry) []Item {
 		})
 	}
 	return items
+}
+
+func panePIDs(s tmux.Session) []int {
+	pids := make([]int, 0, len(s.Processes))
+	for _, p := range s.Processes {
+		if p.PID > 0 {
+			pids = append(pids, p.PID)
+		}
+	}
+	return pids
 }
 
 func isGitRepo(path string) bool {

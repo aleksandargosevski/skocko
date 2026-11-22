@@ -10,6 +10,7 @@ Smart tmux session manager with a built-in TUI picker.
 - **Project scanning** - auto-discovers projects from configured directories
 - **Session sections** - Active Sessions, Configured, and Projects separated in the picker
 - **Process detection** - shows running processes per session (node, nvim, opencode, lazygit, docker, etc.)
+- **Dev servers** - node/bun/deno processes per session with their ports, including servers AI agents left running in the background
 - **Git status** - async branch status with dirty/ahead/behind/untracked indicators
 - **Zoxide integration** - toggle to browse zoxide entries
 - **Session save/restore** - persist sessions across tmux restarts including nvim editor state
@@ -108,7 +109,8 @@ All keybindings are configurable. Press `ctrl+/` to toggle the hotkey bar in the
 | `enter` | - | Connect to session (create if needed) |
 | `esc` / `ctrl+c` | - | Quit |
 | Toggle zoxide | `ctrl+s` | Switch between Projects and Zoxide views |
-| Kill session | `ctrl+x` | Kill selected session (graceful SIGTERM) |
+| Kill session | `ctrl+x` | Kill selected session (graceful SIGTERM, also stops its detected servers) |
+| Stop servers | `ctrl+k` | Stop node servers of the selected item without killing the session |
 | Git status | `ctrl+g` | Toggle git status badges |
 | Preview | `ctrl+o` | Toggle info preview panel |
 | Save session | `ctrl+w` | Save selected session to disk |
@@ -170,6 +172,7 @@ git_status:
 keybindings:
   zoxide: ctrl+s
   kill_session: ctrl+x
+  kill_servers: ctrl+k
   git_status: ctrl+g
   preview: ctrl+o
   save_session: ctrl+w
@@ -177,6 +180,10 @@ keybindings:
   delete_saved: alt+d
   refresh: ctrl+r
   toggle_help: ctrl+_    # ctrl+/ on keyboard
+
+# Dev server detection
+servers:
+  ignore: []             # extra command substrings to hide (added to built-in list)
 
 # AI status detection (used by skocko watch and picker)
 ai_status:
@@ -224,7 +231,7 @@ All colors including process icons adapt to the active theme.
 |---------|------|
 | node / npm / bun / deno | 󰎙 |
 | nvim |  |
-| opencode / claude / aider / pi | 󰚩 |
+| opencode / claude / aider / pi / codex / gemini | 󰚩 |
 | lazygit | 󰊢 |
 | docker | 󰡨 |
 | python | 󰌠 |
@@ -234,6 +241,21 @@ All colors including process icons adapt to the active theme.
 | java / mvn / gradle |  |
 | ssh | 󰣀 |
 | postgres / mysql / redis | 󰆼 |
+
+## Dev Servers
+
+The picker shows node/bun/deno processes (dev servers, watchers) per item, merged into one badge with their listening ports: `󰎙 :3000 :24678`. Worker processes are grouped under their root process (e.g. `npm run dev`).
+
+A process belongs to an item when:
+
+1. it runs under one of the session's tmux panes (green badge), or
+2. it is **detached** (no tmux ancestor, e.g. an AI agent started it in the background and exited) and its working directory is inside the item's path (peach badge). The longest matching path wins; your home directory only matches exactly. Detached servers also show on inactive projects.
+
+Editor tooling and agent helpers are hidden: prettierd, eslint_d, language servers, tsserver, vtsls, MCP servers, and the AI tools themselves. Add more with `servers.ignore`.
+
+`ctrl+k` stops the servers of the selected item (SIGTERM, SIGKILL after 2s). `ctrl+x` stops them too before killing the session. Detection runs async on start and on `ctrl+r`.
+
+Ports are read with `lsof`; without it servers still show, just without ports.
 
 ## Session Save/Restore
 
@@ -289,6 +311,7 @@ ai_status:
 - **Git**: branch, last commit, remote
 - **Windows**: tmux window list with pane commands
 - **Configured windows**: what would be created on connect
+- **Servers**: node/bun/deno processes with ports, command, PID and `detached` marker
 
 Auto-hides below 60 columns width.
 
@@ -308,6 +331,7 @@ skocko/
     ├── git/             # git status (parallel)
     ├── notify/          # desktop notifications
     ├── project/         # directory scanning
+    ├── servers/         # node dev server + port detection
     ├── session/         # save/restore
     ├── tmux/            # tmux interaction
     ├── tui/             # Bubble Tea TUI + theming

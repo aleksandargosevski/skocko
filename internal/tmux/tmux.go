@@ -178,6 +178,8 @@ func listPanePIDs(sessionName string) []int {
 var nodeScriptAliases = map[string]string{
 	"aider":    "aider",
 	"claude":   "claude",
+	"codex":    "codex",
+	"gemini":   "gemini",
 	"opencode": "opencode",
 	"pi":       "pi",
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"skocko/internal/config"
 	"skocko/internal/git"
+	"skocko/internal/servers"
 	"skocko/internal/session"
 	"skocko/internal/tmux"
 	"github.com/sahilm/fuzzy"
@@ -19,7 +20,10 @@ import (
 
 // --- Messages ---
 
-type sessionKilledMsg struct{ name string }
+type sessionKilledMsg struct {
+	name       string
+	serversErr error
+}
 type sessionKillFailedMsg struct {
 	name string
 	err  error
@@ -37,6 +41,17 @@ type sessionSaveFailedMsg struct {
 
 type aiStatusLoadedMsg struct {
 	statuses map[string]AIStatus
+}
+
+type serversLoadedMsg struct {
+	byOwner map[string][]servers.Server
+	err     error
+}
+
+type serversStoppedMsg struct {
+	name    string
+	stopped int
+	err     error
 }
 
 type savedDeletedMsg struct{ name string }
@@ -91,6 +106,7 @@ type Model struct {
 	hotkeysVisible   bool
 	showBorder       bool
 	aiStatuses       map[string]AIStatus // current AI statuses: "session:win.pane" -> status
+	serversLoaded    bool                // once true, server badges replace pane node icons
 }
 
 func NewModel(projectItems []Item, zoxideItems []Item, cfg *config.Config, aiStatuses map[string]AIStatus) Model {
@@ -142,6 +158,7 @@ func (m Model) Init() tea.Cmd {
 			}
 			return aiStatusLoadedMsg{statuses: statuses}
 		},
+		m.detectServers(),
 	)
 }
 
@@ -155,7 +172,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionKilledMsg:
 		m.onSessionKilled(msg.name)
 		m.statusMessage = "Session killed: " + msg.name
+		if msg.serversErr != nil {
+			m.statusMessage += " (servers: " + msg.serversErr.Error() + ")"
+		}
+		return m, m.detectServers()
+
+	case serversLoadedMsg:
+		if msg.err != nil {
+			m.statusMessage = "Server detection failed: " + msg.err.Error()
+			return m, nil
+		}
+		m.applyServers(msg.byOwner)
 		return m, nil
+
+	case serversStoppedMsg:
+		m.statusMessage = fmt.Sprintf("Stopped %d server(s): %s", msg.stopped, msg.name)
+		if msg.err != nil {
+			m.statusMessage = "Stop servers failed: " + msg.err.Error()
+		}
+		return m, m.detectServers()
 
 	case sessionKillFailedMsg:
 		m.statusMessage = "Failed to kill: " + msg.name
@@ -239,6 +274,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key == m.keys.KillSession {
 			return m.handleKillSession()
 		}
+		if key == m.keys.KillServers {
+			return m.handleKillServers()
+		}
 		if key == m.keys.GitStatus {
 			return m.handleGitToggle()
 		}
@@ -262,13 +300,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key == m.keys.Refresh {
 			m.statusMessage = "Refreshing..."
-			return m, func() tea.Msg {
+			return m, tea.Batch(func() tea.Msg {
 				statuses := DetectAllAIStatuses()
 				if statuses == nil {
 					statuses = make(map[string]AIStatus)
 				}
 				return aiStatusLoadedMsg{statuses: statuses}
-			}
+			}, m.detectServers())
 		}
 
 		switch key {
@@ -475,13 +513,80 @@ func (m Model) handleKillSession() (tea.Model, tea.Cmd) {
 	}
 
 	name := item.Name
+	stopServers := m.stopServersFor(name)
 	return m, func() tea.Msg {
-		err := tmux.KillSession(name)
-		if err != nil {
+		// Servers first: detached ones (left behind by agents) would survive the session kill.
+		_, serversErr := stopServers()
+		if err := tmux.KillSession(name); err != nil {
 			return sessionKillFailedMsg{name: name, err: err}
 		}
-		return sessionKilledMsg{name: name}
+		return sessionKilledMsg{name: name, serversErr: serversErr}
 	}
+}
+
+// --- Servers ---
+
+func (m Model) handleKillServers() (tea.Model, tea.Cmd) {
+	if m.mode != ModeProjects || len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
+		return m, nil
+	}
+
+	item := m.filtered[m.cursor]
+	if len(item.Servers) == 0 {
+		m.statusMessage = "No servers running: " + item.Name
+		return m, nil
+	}
+
+	m.statusMessage = "Stopping servers..."
+	name := item.Name
+	stopServers := m.stopServersFor(name)
+	return m, func() tea.Msg {
+		stopped, err := stopServers()
+		return serversStoppedMsg{name: name, stopped: stopped, err: err}
+	}
+}
+
+// stopServersFor re-detects servers right before stopping them, so we never
+// signal a PID that exited (and possibly got reused) since the last refresh.
+func (m Model) stopServersFor(name string) func() (int, error) {
+	owners := m.serverOwners()
+	ignore := m.cfg.Servers.Ignore
+	return func() (int, error) {
+		byOwner, err := servers.Detect(owners, ignore)
+		if err != nil {
+			return 0, err
+		}
+		return servers.Stop(byOwner[name])
+	}
+}
+
+func (m Model) detectServers() tea.Cmd {
+	owners := m.serverOwners()
+	ignore := m.cfg.Servers.Ignore
+	return func() tea.Msg {
+		byOwner, err := servers.Detect(owners, ignore)
+		return serversLoadedMsg{byOwner: byOwner, err: err}
+	}
+}
+
+func (m Model) serverOwners() []servers.Owner {
+	owners := make([]servers.Owner, 0, len(m.projectItems))
+	for _, item := range m.projectItems {
+		path := item.Path
+		if abs, err := filepath.Abs(path); err == nil && path != "" {
+			path = abs
+		}
+		owners = append(owners, servers.Owner{Key: item.Name, Path: path, PanePIDs: item.PanePIDs})
+	}
+	return owners
+}
+
+func (m *Model) applyServers(byOwner map[string][]servers.Server) {
+	for i := range m.projectItems {
+		m.projectItems[i].Servers = byOwner[m.projectItems[i].Name]
+	}
+	m.serversLoaded = true
+	m.applyFilter()
 }
 
 func (m *Model) onSessionKilled(name string) {
@@ -700,6 +805,7 @@ func (m Model) View() string {
 		}
 		if m.mode == ModeProjects {
 			helpParts = append(helpParts, displayKey(m.keys.KillSession)+" kill")
+			helpParts = append(helpParts, displayKey(m.keys.KillServers)+" stop servers")
 		}
 		helpParts = append(helpParts, displayKey(m.keys.GitStatus)+" git")
 		helpParts = append(helpParts, displayKey(m.keys.Preview)+" info")
@@ -827,7 +933,14 @@ func (m Model) renderList(width, maxHeight int) string {
 		icon := noIcon
 		isSelected := idx == m.cursor
 
-		badges := renderProcessBadges(item.ProcessIcons, t, m.aiStatuses)
+		processIcons := item.ProcessIcons
+		if m.serversLoaded {
+			processIcons = withoutNodeIcons(processIcons)
+		}
+		badges := joinNonEmpty(
+			renderServerBadge(item.Servers, t),
+			renderProcessBadges(processIcons, t, m.aiStatuses),
+		)
 		gitBadge := ""
 		if m.gitStatusVisible && item.IsGit && item.GitStatus != nil {
 			gitBadge = RenderGitStatus(*item.GitStatus, m.gitStatusDetail, t)
@@ -952,6 +1065,60 @@ func renderProcessBadges(icons []ProcessIcon, t *Theme, aiStatuses map[string]AI
 	}
 
 	return strings.Join(parts, " ")
+}
+
+// renderServerBadge renders "󰎙 :3100 :5173" per attachment kind: green for
+// servers running in tmux panes, peach for detached ones left behind by agents.
+func renderServerBadge(list []servers.Server, t *Theme) string {
+	var attached, detached []servers.Server
+	for _, s := range list {
+		if s.Detached {
+			detached = append(detached, s)
+		} else {
+			attached = append(attached, s)
+		}
+	}
+	return joinNonEmpty(
+		renderServerGroup(attached, t.Green, t),
+		renderServerGroup(detached, t.Peach, t),
+	)
+}
+
+func renderServerGroup(list []servers.Server, color lipgloss.Color, t *Theme) string {
+	if len(list) == 0 {
+		return ""
+	}
+	dim := lipgloss.NewStyle().Foreground(t.Dim)
+	badge := lipgloss.NewStyle().Foreground(color).Render(nodeIcon)
+	if len(list) > 1 {
+		badge += dim.Render(fmt.Sprintf("×%d", len(list)))
+	}
+	for _, s := range list {
+		for _, port := range s.Ports {
+			badge += " " + dim.Render(fmt.Sprintf(":%d", port))
+		}
+	}
+	return badge
+}
+
+func withoutNodeIcons(icons []ProcessIcon) []ProcessIcon {
+	filtered := make([]ProcessIcon, 0, len(icons))
+	for _, icon := range icons {
+		if icon.Icon != nodeIcon {
+			filtered = append(filtered, icon)
+		}
+	}
+	return filtered
+}
+
+func joinNonEmpty(parts ...string) string {
+	var nonEmpty []string
+	for _, p := range parts {
+		if p != "" {
+			nonEmpty = append(nonEmpty, p)
+		}
+	}
+	return strings.Join(nonEmpty, " ")
 }
 
 // displayKey returns a human-friendly label for a key binding.

@@ -45,6 +45,7 @@ project_paths:
 # keybindings:
 #   zoxide: ctrl+s
 #   kill_session: ctrl+x
+#   kill_servers: ctrl+k
 #   git_status: ctrl+g
 #   preview: ctrl+o
 #   save_session: ctrl+w
@@ -52,6 +53,10 @@ project_paths:
 #   delete_saved: alt+d
 #   refresh: ctrl+r
 #   toggle_help: ctrl+_
+
+# Dev server detection (node/bun/deno processes and ports)
+# servers:
+#   ignore: [storybook]   # extra command substrings to hide, added to built-in list
 
 # AI status detection (used by skocko watch and picker)
 # ai_status:
