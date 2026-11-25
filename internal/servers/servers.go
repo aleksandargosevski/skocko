@@ -458,13 +458,22 @@ func parseLsofPorts(out string) map[int][]int {
 			if idx < 0 || pid == 0 {
 				continue
 			}
-			if port, err := strconv.Atoi(line[idx+1:]); err == nil {
+			if port, err := strconv.Atoi(line[idx+1:]); err == nil && !isEphemeralPort(port) {
 				ports[pid] = mergePorts(ports[pid], []int{port})
 			}
 		}
 	}
 	return ports
 }
+
+// isEphemeralPort reports ports auto-assigned by the OS (listen on port 0),
+// e.g. workerd/miniflare instances, inspector and HMR sockets. They are
+// internal plumbing, not something a user opens in a browser.
+func isEphemeralPort(port int) bool {
+	return port >= ephemeralPortMin
+}
+
+const ephemeralPortMin = 49152
 
 func listCwds(pids []int) map[int]string {
 	if len(pids) == 0 {

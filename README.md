@@ -255,7 +255,7 @@ Editor tooling and agent helpers are hidden: prettierd, eslint_d, language serve
 
 `ctrl+k` stops the servers of the selected item (SIGTERM, SIGKILL after 2s). `ctrl+x` stops them too before killing the session. Detection runs async on start and on `ctrl+r`.
 
-Ports are read with `lsof`; without it servers still show, just without ports.
+Ports are read with `lsof`; without it servers still show, just without ports. OS-assigned ephemeral ports (49152+, e.g. workerd/miniflare instances, inspector sockets) are hidden.
 
 ## Session Save/Restore
 

@@ -121,7 +121,7 @@ func TestSignalTargets(t *testing.T) {
 }
 
 func TestParseLsof(t *testing.T) {
-	ports := parseLsofPorts("p50622\nf14\nn[::1]:3100\nf213\nn*:24679\np70\nf5\nn127.0.0.1:3100\n")
+	ports := parseLsofPorts("p50622\nf14\nn[::1]:3100\nf213\nn*:24679\nf215\nn127.0.0.1:52012\np70\nf5\nn127.0.0.1:3100\np80\nf6\nn127.0.0.1:65466\n")
 	want := map[int][]int{50622: {3100, 24679}, 70: {3100}}
 	if !reflect.DeepEqual(ports, want) {
 		t.Errorf("parseLsofPorts() = %v, want %v", ports, want)
